@@ -34,6 +34,20 @@ class HALE:
         self.rls_lambda = config.get('rls_lambda', 1.0)
         self.critic = NeuromdulatoryCtric(kappa=config['kappa'], lam=config['lam'], eps=config['eps'])
 
+    def begin_task(self):
+        """
+        Call this at the START of each task.
+        Saves a snapshot of current weights as the protection target.
+        The CFNR will pull weights back toward this snapshot at task boundary,
+        preserving the parameter space before the new task overwrites it.
+        """
+        L = len(self.blocks)
+        for l in range(L):
+            setattr(self, f'_W_init_{l}',
+                    self.blocks[l].W.clone().detach())
+            setattr(self, f'_W_skip_init_{l}',
+                    self.blocks[l].W_skip.clone().detach())
+
     def rls_update(self, h, y):
         """
         RLS update on output weights.
@@ -138,15 +152,22 @@ class HALE:
     def task_boundary(self):
         L = len(self.blocks)
         for l in range(L):
-            W_task = self.blocks[l].W.clone()
-            W_skip_task = self.blocks[l].W_skip.clone()
-            self.blocks[l].W = self.null_spaces_W[l].project(self.blocks[l].W, W_task)
-            self.blocks[l].W_skip = self.null_spaces_skip[l].project(self.blocks[l].W_skip, W_skip_task)
+            # Use weights from START of this task as protection target
+            # (not end-of-task weights, which would make projection a no-op)
+            W_init = getattr(self, f'_W_init_{l}',
+                             torch.zeros_like(self.blocks[l].W))
+            W_skip_init = getattr(self, f'_W_skip_init_{l}',
+                                  torch.zeros_like(self.blocks[l].W_skip))
+            self.blocks[l].W = self.null_spaces_W[l].project(
+                self.blocks[l].W, W_init)
+            self.blocks[l].W_skip = self.null_spaces_skip[l].project(
+                self.blocks[l].W_skip, W_skip_init)
             self.null_spaces_W[l].reset(self.config['delta'])
             self.null_spaces_skip[l].reset(self.config['delta'])
         rls_delta = self.config.get('rls_delta', 1.0)
-        self.P_rls = (1.0 / rls_delta) * torch.eye(self.d_s, device=self.device)
-        self.reset_reservoir_states(1)
+        self.P_rls = (1.0 / rls_delta) * torch.eye(
+            self.d_s, device=self.device)
+        self.reset_reservoir_states()
         self.critic.reset()
 
     def evaluate(self, dataloader):

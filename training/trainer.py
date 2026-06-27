@@ -47,6 +47,7 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
         print(f'\n[{dataset_key}] Task {k + 1}/{n_tasks} | elapsed: {elapsed:.1f}min')
         hale.reset_reservoir_states()
         esn.reset()
+        hale.begin_task()
         for ep in range(n_epochs):
             bar = tqdm(train_loaders[k], desc=f'ep{ep + 1}/{n_epochs}', leave=False)
             for x_seq, y in bar:
