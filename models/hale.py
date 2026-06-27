@@ -168,8 +168,8 @@ class HALE:
         return correct / total if total > 0 else 0.0
 
     def forward_sequence(self, x_seq):
-        # Handle both (T, d_in) and (B, T, d_in)
-        if x_seq.dim() == 2:
+        was_unbatched = (x_seq.dim() == 2)
+        if was_unbatched:
             x_seq = x_seq.unsqueeze(0)   # (1, T, d_in)
         B = x_seq.shape[0]
 
@@ -183,7 +183,10 @@ class HALE:
                 r_t = self.reservoirs[l].step(h_outputs[l])
                 s0 = self.blocks[l].free_phase_analytical(r_t, h_outputs[max(0, l - 1)])
                 h_outputs[l + 1] = self.blocks[l].get_output(s0)
-        return h_outputs[L]
+        h_final = h_outputs[L]
+        if was_unbatched:
+            return h_final.squeeze(0)    # (d_s,)
+        return h_final                   # (B, d_s)
 
     def save_checkpoint(self, path, task_k, metrics):
         torch.save({'task': task_k, 'metrics': metrics, 'W_out': self.W_out.cpu(), 'P_rls': self.P_rls.cpu(), 'blocks_W': [b.W.cpu() for b in self.blocks], 'blocks_W_skip': [b.W_skip.cpu() for b in self.blocks], 'null_W': [n.P.cpu() for n in self.null_spaces_W], 'null_skip': [n.P.cpu() for n in self.null_spaces_skip]}, path)
