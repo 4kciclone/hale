@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pyo
+data_cache/
+results/*.pt
+results/*.json
+!results/.gitkeep
+.DS_Store
+*.egg-info/
