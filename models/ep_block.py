@@ -33,7 +33,13 @@ class EPBlock:
                  - (s * (s_prev2 @ self.W_skip.T)).sum(-1))
             # Local loss
             local_logits = s @ self.local_head.T  # (B, n_classes)
-            loss_local = F.cross_entropy(local_logits, y_local.long())
+            y_for_loss = y_local.long()
+            if y_for_loss.dim() == 0:
+                y_for_loss = y_for_loss.unsqueeze(0)
+            y_for_loss = y_for_loss.view(-1)
+            if local_logits.dim() == 1:
+                local_logits = local_logits.unsqueeze(0)
+            loss_local = F.cross_entropy(local_logits, y_for_loss)
             total = E.mean() + beta * loss_local
             grad = torch.autograd.grad(total, s)[0]  # (B, d_s)
             s = (s - gamma * grad).detach()
