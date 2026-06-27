@@ -48,13 +48,15 @@ class EPBlock:
     def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t,
                importance_W=None, W_anchor=None,
                importance_skip=None, skip_anchor=None,
-               lambda_reg=0.5):
+               lambda_reg=None):
         """
         EP weight update with optional EWC-style regularization.
         importance_W:   (d_r_total,) tensor — per-dim importance from CFNR
         W_anchor:       (d_s, d_r_total) — weights to protect (end of prev task)
         lambda_reg:     regularization strength
         """
+        if lambda_reg is None:
+            lambda_reg = getattr(self, 'lambda_reg', 0.5)
         with torch.no_grad():
             delta = s_beta - s0                          # (B, d_s)
             scale = (eta / beta) * M_t

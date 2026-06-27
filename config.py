@@ -32,6 +32,7 @@ HALE_CONFIG_PHASE1 = {
     'clip_alpha': 5.0,
     'rls_delta':  1.0,
     'rls_lambda': 1.0,
+    'lambda_reg': 0.5,
 }
 
 HALE_CONFIG_PHASE2 = {
@@ -54,6 +55,7 @@ HALE_CONFIG_PHASE2 = {
     'clip_alpha': 5.0,
     'rls_delta':  1.0,
     'rls_lambda': 1.0,
+    'lambda_reg': 0.5,
 }
 
 # Default for Phase 1

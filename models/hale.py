@@ -149,7 +149,7 @@ class HALE:
                 config['eta'], config['beta'], M_t,
                 importance_W=imp_W,      W_anchor=anchor_W,
                 importance_skip=imp_skip, skip_anchor=anchor_skip,
-                lambda_reg=0.5
+                lambda_reg=config.get('lambda_reg', 0.5)
             )
 
             self.null_spaces_W[l].update(r_t)
