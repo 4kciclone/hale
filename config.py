@@ -2,11 +2,12 @@ import torch
 import os
 
 def get_device():
+    torch.cuda.init()
     if torch.cuda.is_available():
         device = torch.device('cuda')
         name = torch.cuda.get_device_name(0)
-        mem = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f'Device: {device} | GPU: {name} | Memory: {mem:.1f}GB')
+        mem  = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f'Device: cuda | GPU: {name} | Memory: {mem:.1f}GB')
     else:
         device = torch.device('cpu')
         print('Device: CPU')
