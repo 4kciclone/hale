@@ -88,12 +88,16 @@ class HALE:
         return (pred == y_i_int), loss
 
     def full_train_step(self, x_seq, y):
+        # Handle both (T, d_in) and (B, T, d_in)
+        if x_seq.dim() == 2:
+            x_seq = x_seq.unsqueeze(0)   # (1, T, d_in)
+        B = x_seq.shape[0]
+
         # x_seq: (B, T, d_in)
         y = to_scalar_label(y, self.device)
         config = self.config
         L = len(self.blocks)
         d_s = self.d_s
-        B = x_seq.shape[0]
         T = x_seq.shape[1]
 
         r_t_per_block = [None] * L
@@ -164,9 +168,13 @@ class HALE:
         return correct / total if total > 0 else 0.0
 
     def forward_sequence(self, x_seq):
+        # Handle both (T, d_in) and (B, T, d_in)
+        if x_seq.dim() == 2:
+            x_seq = x_seq.unsqueeze(0)   # (1, T, d_in)
+        B = x_seq.shape[0]
+
         L = len(self.blocks)
         d_s = self.d_s
-        B = x_seq.shape[0]
         h_outputs = [torch.zeros(B, d_s, device=self.device) for _ in range(L + 2)]
         self.reset_reservoir_states(B)
         for t in range(x_seq.shape[1]):
