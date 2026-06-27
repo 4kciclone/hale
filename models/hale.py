@@ -35,49 +35,57 @@ class HALE:
         self.critic = NeuromdulatoryCtric(kappa=config['kappa'], lam=config['lam'], eps=config['eps'])
 
     def rls_update(self, h, y):
-    # h: (B, d_s) or (d_s,)
-    # y: (B,) or scalar
-    
-    # Normalize shapes
-    if h.dim() == 1:
-        h = h.unsqueeze(0)
-    
-    y_tensor = y
-    if not isinstance(y_tensor, torch.Tensor):
-        y_tensor = torch.tensor([y_tensor], dtype=torch.long,
-                                device=self.device)
-    y_tensor = y_tensor.view(-1).long()  # always (B,)
-    
-    # Ensure B matches
-    B = h.shape[0]
-    if y_tensor.shape[0] != B:
-        y_tensor = y_tensor.expand(B)
-    
-    total_loss = 0.0
-    total_correct = 0
-    for i in range(B):
-        pred_i, loss_i = self._rls_single(h[i], y_tensor[i].item())
-        total_correct += pred_i
-        total_loss += loss_i
-    
-    return total_correct / B, total_loss / B
+        """
+        RLS update on output weights.
+        h: (B, d_s) or (d_s,)
+        y: (B,) long or scalar int
+        Returns: (correct_fraction, avg_loss)
+        """
+        if h.dim() == 1:
+            h = h.unsqueeze(0)
+        if not isinstance(y, torch.Tensor):
+            y = torch.tensor([y], dtype=torch.long, device=self.device)
+        y = y.view(-1).long().to(self.device)
+        B = h.shape[0]
+        if y.shape[0] == 1 and B > 1:
+            y = y.expand(B)
+        total_loss    = 0.0
+        total_correct = 0
+        for i in range(B):
+            pred_i, loss_i = self._rls_single(h[i], y[i].item())
+            total_correct += int(pred_i)
+            total_loss    += float(loss_i)
+        return total_correct / B, total_loss / B
 
-    def _rls_single(self, h_i, y_i):
+    def _rls_single(self, h_i, y_i_int):
+        """
+        Single-sample RLS update.
+        h_i: (d_s,) tensor
+        y_i_int: Python int
+        Returns: (correct bool, loss float)
+        """
         with torch.no_grad():
             logits = self.W_out @ h_i
-            pred = logits.argmax().item()
+            pred   = int(logits.argmax().item())
+
             target = torch.zeros(self.n_classes, device=self.device)
-            target[y_i.item()] = 1.0
-            Ph = self.P_rls @ h_i
+            target[y_i_int] = 1.0
+
+            Ph    = self.P_rls @ h_i
             denom = self.rls_lambda + h_i @ Ph
-            k = Ph / denom
-            self.P_rls = (1.0 / self.rls_lambda) * (self.P_rls - torch.outer(k, Ph))
-            error = target - logits
-            self.W_out += torch.outer(error, k)
+            k     = Ph / denom
+
+            self.P_rls = (1.0 / self.rls_lambda) * (
+                self.P_rls - torch.outer(k, Ph)
+            )
+            error      = target - logits
+            self.W_out = self.W_out + torch.outer(error, k)
+
             logits_new = self.W_out @ h_i
-            log_probs = torch.log_softmax(logits_new, dim=0)
-            loss = -log_probs[y_i.item()].item()
-        return (pred == y_i.item()), loss
+            log_probs  = torch.log_softmax(logits_new, dim=0)
+            loss       = -log_probs[y_i_int].item()
+
+        return (pred == y_i_int), loss
 
     def full_train_step(self, x_seq, y):
         # x_seq: (B, T, d_in)
