@@ -7,15 +7,20 @@ class RecursiveNullSpace:
         self.P = (1.0 / delta) * torch.eye(d_total, device=device)
 
     def update(self, r_t):
-        if r_t.dim() == 1:
-            r_t = r_t.unsqueeze(0)
-        with torch.no_grad():
-            # Apply B sequential Sherman-Morrison updates
-            for i in range(r_t.shape[0]):
-                r = r_t[i]
-                Pr = self.P @ r
-                denom = 1.0 + r @ Pr
-                self.P = self.P - torch.outer(Pr, Pr) / denom
+        """
+        Sherman-Morrison update.
+        r_t: (d_total,) or (B, d_total)
+        For batches, uses the mean vector — one update per batch.
+        This prevents P from collapsing under correlated batch vectors.
+        """
+        if r_t.dim() == 2:
+            r = r_t.mean(dim=0)   # (d_total,) — one representative vector
+        else:
+            r = r_t               # (d_total,)
+
+        Pr    = self.P @ r
+        denom = 1.0 + r @ Pr
+        self.P = self.P - torch.outer(Pr, Pr) / denom
 
     def project(self, W_old, W_task):
         with torch.no_grad():
