@@ -34,16 +34,33 @@ class HALE:
         self.rls_lambda = config.get('rls_lambda', 1.0)
         self.critic = NeuromdulatoryCtric(kappa=config['kappa'], lam=config['lam'], eps=config['eps'])
 
-    def rls_update(self, h, y_scalar):
-        # h: (B, d_s), y_scalar: (B,)
-        total_loss = 0.0
-        total_correct = 0
-        B = h.shape[0]
-        for i in range(B):
-            pred_i, loss_i = self._rls_single(h[i], y_scalar[i])
-            total_correct += pred_i
-            total_loss += loss_i
-        return total_correct / B, total_loss / B
+    def rls_update(self, h, y):
+    # h: (B, d_s) or (d_s,)
+    # y: (B,) or scalar
+    
+    # Normalize shapes
+    if h.dim() == 1:
+        h = h.unsqueeze(0)
+    
+    y_tensor = y
+    if not isinstance(y_tensor, torch.Tensor):
+        y_tensor = torch.tensor([y_tensor], dtype=torch.long,
+                                device=self.device)
+    y_tensor = y_tensor.view(-1).long()  # always (B,)
+    
+    # Ensure B matches
+    B = h.shape[0]
+    if y_tensor.shape[0] != B:
+        y_tensor = y_tensor.expand(B)
+    
+    total_loss = 0.0
+    total_correct = 0
+    for i in range(B):
+        pred_i, loss_i = self._rls_single(h[i], y_tensor[i].item())
+        total_correct += pred_i
+        total_loss += loss_i
+    
+    return total_correct / B, total_loss / B
 
     def _rls_single(self, h_i, y_i):
         with torch.no_grad():
