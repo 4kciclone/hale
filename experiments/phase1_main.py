@@ -3,7 +3,7 @@ import sys
 import time
 import traceback
 sys.path.insert(0, '.')
-from config import get_device
+from config import get_device, HALE_CONFIG_PHASE1 as HALE_CONFIG
 from training.trainer import run_experiment
 from training.checkpoint import load_results, save_results, already_done
 

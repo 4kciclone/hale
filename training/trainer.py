@@ -23,7 +23,8 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
     if device is None:
         device = get_device()
     if config is None:
-        config = HALE_CONFIG.copy()
+        from config import HALE_CONFIG_PHASE1
+        config = HALE_CONFIG_PHASE1.copy()
     config['delta'] = delta
     if L is not None:
         config['L'] = L
