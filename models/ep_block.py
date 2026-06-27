@@ -45,14 +45,35 @@ class EPBlock:
             s = (s - gamma * grad).detach()
         return s  # (B, d_s)
 
-    def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t):
-        # s_beta, s0: (B, d_s), r_t: (B, d_r_total), s_prev2: (B, d_s)
+    def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t,
+               importance_W=None, W_anchor=None,
+               importance_skip=None, skip_anchor=None,
+               lambda_reg=0.5):
+        """
+        EP weight update with optional EWC-style regularization.
+        importance_W:   (d_r_total,) tensor — per-dim importance from CFNR
+        W_anchor:       (d_s, d_r_total) — weights to protect (end of prev task)
+        lambda_reg:     regularization strength
+        """
         with torch.no_grad():
-            delta = s_beta - s0        # (B, d_s)
+            delta = s_beta - s0                          # (B, d_s)
             scale = (eta / beta) * M_t
-            # Outer product averaged over batch
-            self.W      += scale * (delta.T @ r_t) / delta.shape[0]
-            self.W_skip += scale * (delta.T @ s_prev2) / delta.shape[0]
+            dW      = scale * (delta.T @ r_t) / delta.shape[0]
+            dW_skip = scale * (delta.T @ s_prev2) / delta.shape[0]
+
+            self.W      += dW
+            self.W_skip += dW_skip
+
+            # EWC-style penalty: pull important dims toward anchor
+            if importance_W is not None and W_anchor is not None:
+                imp = importance_W.unsqueeze(0)          # (1, d_r_total)
+                reg_W = lambda_reg * imp * (self.W - W_anchor)
+                self.W -= eta * reg_W
+
+            if importance_skip is not None and skip_anchor is not None:
+                imp_s = importance_skip.unsqueeze(0)     # (1, d_s)
+                reg_s = lambda_reg * imp_s * (self.W_skip - skip_anchor)
+                self.W_skip -= eta * reg_s
 
     def get_output(self, s0):
         return self.activate(s0)

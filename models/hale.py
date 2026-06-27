@@ -35,18 +35,8 @@ class HALE:
         self.critic = NeuromdulatoryCtric(kappa=config['kappa'], lam=config['lam'], eps=config['eps'])
 
     def begin_task(self):
-        """
-        Call this at the START of each task.
-        Saves a snapshot of current weights as the protection target.
-        The CFNR will pull weights back toward this snapshot at task boundary,
-        preserving the parameter space before the new task overwrites it.
-        """
-        L = len(self.blocks)
-        for l in range(L):
-            setattr(self, f'_W_init_{l}',
-                    self.blocks[l].W.clone().detach())
-            setattr(self, f'_W_skip_init_{l}',
-                    self.blocks[l].W_skip.clone().detach())
+        """Called at START of each task. No-op on first task."""
+        pass   # anchors are set at task_boundary, used during next task
 
     def rls_update(self, h, y):
         """
@@ -139,31 +129,67 @@ class HALE:
         M_t = self.critic.update(e_t)
 
         for l in range(L):
-            r_t = r_t_per_block[l]
-            s0 = s0_per_block[l]
+            s0      = s0_per_block[l]
+            r_t     = r_t_per_block[l]
             s_prev2 = s_prev2_per_block[l]
-            s_beta = self.blocks[l].nudge_phase(s0, r_t, s_prev2, y, config['beta'], config['gamma'], config['N_nudge'])
-            self.blocks[l].update(s_beta, s0, r_t, s_prev2, config['eta'], config['beta'], M_t)
+
+            s_beta = self.blocks[l].nudge_phase(
+                s0, r_t, s_prev2, y,
+                config['beta'], config['gamma'], config['N_nudge']
+            )
+
+            # Retrieve anchors and importance (None on first task)
+            anchor_W    = getattr(self, f'_anchor_W_{l}',    None)
+            anchor_skip = getattr(self, f'_anchor_skip_{l}', None)
+            imp_W       = getattr(self, f'_imp_W_{l}',       None)
+            imp_skip    = getattr(self, f'_imp_skip_{l}',    None)
+
+            self.blocks[l].update(
+                s_beta, s0, r_t, s_prev2,
+                config['eta'], config['beta'], M_t,
+                importance_W=imp_W,      W_anchor=anchor_W,
+                importance_skip=imp_skip, skip_anchor=anchor_skip,
+                lambda_reg=0.5
+            )
+
             self.null_spaces_W[l].update(r_t)
             self.null_spaces_skip[l].update(s_prev2)
 
         return loss_val, correct, M_t
 
     def task_boundary(self):
+        """
+        Called at END of each task.
+        1. Saves end-of-task weights as anchors for next task.
+        2. Computes per-dimension importance from accumulated P.
+        3. Resets P, RLS, reservoir, critic for next task.
+        Does NOT modify weights — protection happens during next task training.
+        """
         L = len(self.blocks)
         for l in range(L):
-            # Use weights from START of this task as protection target
-            # (not end-of-task weights, which would make projection a no-op)
-            W_init = getattr(self, f'_W_init_{l}',
-                             torch.zeros_like(self.blocks[l].W))
-            W_skip_init = getattr(self, f'_W_skip_init_{l}',
-                                  torch.zeros_like(self.blocks[l].W_skip))
-            self.blocks[l].W = self.null_spaces_W[l].project(
-                self.blocks[l].W, W_init)
-            self.blocks[l].W_skip = self.null_spaces_skip[l].project(
-                self.blocks[l].W_skip, W_skip_init)
+            # Save current weights as anchor (what we want to protect)
+            setattr(self, f'_anchor_W_{l}',
+                    self.blocks[l].W.clone().detach())
+            setattr(self, f'_anchor_skip_{l}',
+                    self.blocks[l].W_skip.clone().detach())
+
+            # Compute importance from accumulated precision matrix
+            imp_W    = self.null_spaces_W[l].compute_importance()
+            imp_skip = self.null_spaces_skip[l].compute_importance()
+
+            # Normalize to [0, 1]
+            def normalize(x):
+                xmax = x.max()
+                return x / xmax if xmax > 1e-8 else x
+
+            setattr(self, f'_imp_W_{l}',    normalize(imp_W))
+            setattr(self, f'_imp_skip_{l}', normalize(imp_skip))
+
+            # Reset precision matrices for next task
             self.null_spaces_W[l].reset(self.config['delta'])
             self.null_spaces_skip[l].reset(self.config['delta'])
+
+        # Reset RLS, reservoir, critic
         rls_delta = self.config.get('rls_delta', 1.0)
         self.P_rls = (1.0 / rls_delta) * torch.eye(
             self.d_s, device=self.device)
