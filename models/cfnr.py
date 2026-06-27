@@ -7,10 +7,15 @@ class RecursiveNullSpace:
         self.P = (1.0 / delta) * torch.eye(d_total, device=device)
 
     def update(self, r_t):
+        if r_t.dim() == 1:
+            r_t = r_t.unsqueeze(0)
         with torch.no_grad():
-            Pr = self.P @ r_t
-            denom = 1.0 + r_t @ Pr
-            self.P = self.P - torch.outer(Pr, Pr) / denom
+            # Apply B sequential Sherman-Morrison updates
+            for i in range(r_t.shape[0]):
+                r = r_t[i]
+                Pr = self.P @ r
+                denom = 1.0 + r @ Pr
+                self.P = self.P - torch.outer(Pr, Pr) / denom
 
     def project(self, W_old, W_task):
         with torch.no_grad():

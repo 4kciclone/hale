@@ -18,27 +18,35 @@ class EPBlock:
         return torch.clamp(s, min=0.0, max=self.clip_alpha)
 
     def free_phase_analytical(self, r_t, s_prev2):
-        s0 = self.W @ r_t + self.W_skip @ s_prev2
-        return s0
+        # r_t: (B, d_r_total), s_prev2: (B, d_s)
+        # W: (d_s, d_r_total), W_skip: (d_s, d_s)
+        return r_t @ self.W.T + s_prev2 @ self.W_skip.T  # (B, d_s)
 
     def nudge_phase(self, s0, r_t, s_prev2, y_local, beta, gamma, N_nudge):
-        s = s0.clone().detach().requires_grad_(True)
+        # s0: (B, d_s), y_local: (B,)
+        s = s0.clone()
         for _ in range(N_nudge):
-            energy_grad = s - self.W @ r_t - self.W_skip @ s_prev2
-            logits = self.local_head @ s
-            loss = F.cross_entropy(logits.unsqueeze(0), y_local.view(1).long())
-            loss_grad = torch.autograd.grad(loss, s, retain_graph=False)[0]
-            with torch.no_grad():
-                s_new = s - gamma * (energy_grad + beta * loss_grad)
-            s = s_new.detach().requires_grad_(True)
-        return s.detach()
+            s = s.detach().requires_grad_(True)
+            # Energy per sample, summed over batch
+            E = (0.5 * (s ** 2).sum(-1)
+                 - (s * (r_t @ self.W.T)).sum(-1)
+                 - (s * (s_prev2 @ self.W_skip.T)).sum(-1))
+            # Local loss
+            local_logits = s @ self.local_head.T  # (B, n_classes)
+            loss_local = F.cross_entropy(local_logits, y_local.long())
+            total = E.mean() + beta * loss_local
+            grad = torch.autograd.grad(total, s)[0]  # (B, d_s)
+            s = (s - gamma * grad).detach()
+        return s  # (B, d_s)
 
     def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t):
+        # s_beta, s0: (B, d_s), r_t: (B, d_r_total), s_prev2: (B, d_s)
         with torch.no_grad():
-            diff = s_beta - s0
+            delta = s_beta - s0        # (B, d_s)
             scale = (eta / beta) * M_t
-            self.W += scale * torch.outer(diff, r_t)
-            self.W_skip += scale * torch.outer(diff, s_prev2)
+            # Outer product averaged over batch
+            self.W      += scale * (delta.T @ r_t) / delta.shape[0]
+            self.W_skip += scale * (delta.T @ s_prev2) / delta.shape[0]
 
     def get_output(self, s0):
         return self.activate(s0)

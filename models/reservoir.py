@@ -11,10 +11,11 @@ class HeterogeneousReservoir:
         self.W_in_list = []
         self.W_R_list = []
         self.r_list = []
+        self.B = 1
         for j in range(self.J):
             W_in = torch.randn(d_r, d_in, device=device) * 0.1
             W_R = self._init_W_R(d_r, rho_list[j], device)
-            r = torch.zeros(d_r, device=device)
+            r = torch.zeros(1, d_r, device=device)
             self.W_in_list.append(W_in)
             self.W_R_list.append(W_R)
             self.r_list.append(r)
@@ -27,18 +28,23 @@ class HeterogeneousReservoir:
             W = W * (rho / max_eig)
         return W
 
-    def step(self, h):
+    def step(self, h):   # h: (B, d_in)
         states = []
         for j in range(self.J):
             alpha = self.alpha_list[j]
-            pre = self.W_in_list[j] @ h + self.W_R_list[j] @ self.r_list[j]
-            self.r_list[j] = (1 - alpha) * self.r_list[j] + alpha * torch.tanh(pre)
-            states.append(self.r_list[j])
-        return torch.cat(states)
+            r_new = ((1 - alpha) * self.r_list[j]
+                     + alpha * torch.tanh(
+                         h @ self.W_in_list[j].T        # (B, d_r)
+                         + self.r_list[j] @ self.W_R_list[j].T # (B, d_r)
+                     ))
+            self.r_list[j] = r_new
+            states.append(r_new)
+        return torch.cat(states, dim=-1)  # (B, J*d_r)
 
-    def reset(self):
+    def reset(self, B=1):
+        self.B = B
         for j in range(self.J):
-            self.r_list[j] = torch.zeros(self.d_r, device=self.device)
+            self.r_list[j] = torch.zeros(B, self.d_r, device=self.device)
 
     def get_state_copies(self):
         return [r.clone() for r in self.r_list]

@@ -7,10 +7,7 @@ sys.path.insert(0, '.')
 def to_scalar_label(y, device):
     if not isinstance(y, torch.Tensor):
         return torch.tensor(y, dtype=torch.long, device=device)
-    y = y.squeeze()
-    if y.dim() == 0:
-        return y.long().to(device)
-    return y.view(-1)[0].long().to(device)
+    return y.squeeze().long().to(device)
 
 def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
     from config import HALE_CONFIG, DATASET_CONFIGS, get_device
@@ -52,7 +49,7 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
         for ep in range(n_epochs):
             bar = tqdm(train_loaders[k], desc=f'ep{ep + 1}/{n_epochs}', leave=False)
             for x_seq, y in bar:
-                x_seq = x_seq.squeeze(0).to(device, non_blocking=True)
+                x_seq = x_seq.to(device, non_blocking=True)
                 try:
                     loss, correct, M_t = hale.full_train_step(x_seq, y)
                     bp.train_step(x_seq, y)
