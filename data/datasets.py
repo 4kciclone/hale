@@ -41,6 +41,18 @@ def build_loaders(dataset_key, dcfg):
     for k in range(dcfg['n_tasks']):
         tr = SequentialDataset(dcfg['dataset'], k, True, dcfg['n_classes_per_task'], dcfg['d_in'], dcfg['T'], dcfg.get('train_samples'))
         te = SequentialDataset(dcfg['dataset'], k, False, dcfg['n_classes_per_task'], dcfg['d_in'], dcfg['T'], dcfg.get('test_samples'))
-        train_loaders.append(DataLoader(tr, batch_size=1, shuffle=True))
-        test_loaders.append(DataLoader(te, batch_size=1))
+        train_loaders.append(DataLoader(
+            tr, batch_size=1, shuffle=True,
+            num_workers=4,
+            pin_memory=True,
+            prefetch_factor=2,
+            persistent_workers=True
+        ))
+        test_loaders.append(DataLoader(
+            te, batch_size=1,
+            num_workers=2,
+            pin_memory=True,
+            prefetch_factor=2,
+            persistent_workers=True
+        ))
     return train_loaders, test_loaders

@@ -52,7 +52,7 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
         for ep in range(n_epochs):
             bar = tqdm(train_loaders[k], desc=f'ep{ep + 1}/{n_epochs}', leave=False)
             for x_seq, y in bar:
-                x_seq = x_seq.squeeze(0).to(device)
+                x_seq = x_seq.squeeze(0).to(device, non_blocking=True)
                 try:
                     loss, correct, M_t = hale.full_train_step(x_seq, y)
                     bp.train_step(x_seq, y)
