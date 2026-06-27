@@ -31,7 +31,7 @@ class EPBlock:
             E = (0.5 * (s ** 2).sum(-1)
                  - (s * (r_t @ self.W.T)).sum(-1)
                  - (s * (s_prev2 @ self.W_skip.T)).sum(-1))
-            # Local loss
+            # Local loss (sum over batch to preserve gradient magnitude)
             local_logits = s @ self.local_head.T  # (B, n_classes)
             y_for_loss = y_local.long()
             if y_for_loss.dim() == 0:
@@ -39,24 +39,13 @@ class EPBlock:
             y_for_loss = y_for_loss.view(-1)
             if local_logits.dim() == 1:
                 local_logits = local_logits.unsqueeze(0)
-            loss_local = F.cross_entropy(local_logits, y_for_loss)
-            total = E.mean() + beta * loss_local
+            loss_local = F.cross_entropy(local_logits, y_for_loss, reduction='sum')
+            total = E.sum() + beta * loss_local
             grad = torch.autograd.grad(total, s)[0]  # (B, d_s)
             s = (s - gamma * grad).detach()
         return s  # (B, d_s)
 
-    def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t,
-               importance_W=None, W_anchor=None,
-               importance_skip=None, skip_anchor=None,
-               lambda_reg=None):
-        """
-        EP weight update with optional EWC-style regularization.
-        importance_W:   (d_r_total,) tensor — per-dim importance from CFNR
-        W_anchor:       (d_s, d_r_total) — weights to protect (end of prev task)
-        lambda_reg:     regularization strength
-        """
-        if lambda_reg is None:
-            lambda_reg = getattr(self, 'lambda_reg', 0.5)
+    def update(self, s_beta, s0, r_t, s_prev2, eta, beta, M_t):
         with torch.no_grad():
             delta = s_beta - s0                          # (B, d_s)
             scale = (eta / beta) * M_t
@@ -65,17 +54,6 @@ class EPBlock:
 
             self.W      += dW
             self.W_skip += dW_skip
-
-            # EWC-style penalty: pull important dims toward anchor
-            if importance_W is not None and W_anchor is not None:
-                imp = importance_W.unsqueeze(0)          # (1, d_r_total)
-                reg_W = lambda_reg * imp * (self.W - W_anchor)
-                self.W -= eta * reg_W
-
-            if importance_skip is not None and skip_anchor is not None:
-                imp_s = importance_skip.unsqueeze(0)     # (1, d_s)
-                reg_s = lambda_reg * imp_s * (self.W_skip - skip_anchor)
-                self.W_skip -= eta * reg_s
 
     def get_output(self, s0):
         return self.activate(s0)

@@ -9,7 +9,7 @@ def to_scalar_label(y, device):
         return torch.tensor(y, dtype=torch.long, device=device)
     return y.squeeze().long().to(device)
 
-def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
+def run_experiment(dataset_key, config=None, delta=None, L=None, device=None):
     from config import HALE_CONFIG, DATASET_CONFIGS, get_device
     from models.hale import HALE
     from baselines.backprop import StandardBackprop
@@ -25,7 +25,8 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
     if config is None:
         from config import HALE_CONFIG_PHASE1
         config = HALE_CONFIG_PHASE1.copy()
-    config['delta'] = delta
+    if delta is not None:
+        config['delta'] = delta
     if L is not None:
         config['L'] = L
     dcfg = DATASET_CONFIGS[dataset_key]
@@ -47,6 +48,7 @@ def run_experiment(dataset_key, config=None, delta=0.01, L=None, device=None):
         print(f'\n[{dataset_key}] Task {k + 1}/{n_tasks} | elapsed: {elapsed:.1f}min')
         hale.reset_reservoir_states()
         esn.reset()
+        hale.begin_task()
         for ep in range(n_epochs):
             bar = tqdm(train_loaders[k], desc=f'ep{ep + 1}/{n_epochs}', leave=False)
             for x_seq, y in bar:
